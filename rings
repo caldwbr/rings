@@ -1,0 +1,160 @@
+from manimlib import *
+import numpy as np
+
+class Rings(InteractiveScene):
+    def construct(self):
+        # Set up the camera for a 3D view, and zoom closer
+        self.play(self.camera.frame.animate.set_height(2).reorient(10, 85, 0))  # Adjust camera for better view
+
+        # Add 3D axes to the scene
+        axes = ThreeDAxes(x_range=(-1, 1), y_range=(-1, 1), z_range=(-1, 1))
+        self.add(axes)
+
+        # Function to create a single ring in the yz-plane with center at x = -0.5, y = 0, z = 0
+        def create_ring(radius=0.5, x_pos=-0.5):
+            """Create a single ring centered at (x = -0.5, y = 0, z = 0)."""
+            theta = np.linspace(0, TAU, 100)
+            # Generate points for the ring with radius on the yz-plane
+            y = radius * np.cos(theta)
+            z = radius * np.sin(theta)
+            points = np.array([np.full_like(y, x_pos), y, z]).T
+            # Create a VMobject (ring) from points
+            ring = VMobject().set_points_as_corners(points)
+            ring.set_stroke(width=4, opacity=1)  # Full opacity for the outline
+            ring.set_fill(color=WHITE, opacity=1)  # Set initial fill opacity lower than stroke
+            return ring
+
+        # Define the S-curve function to apply to the perturbation
+        def s_curve(t, start, peak, end):
+            """S-curve for smooth perturbation effect between start, peak, and end times."""
+            if t < start or t > end:
+                return 0.0
+            elif t < peak:
+                return (1 / (1 + np.exp(-10 * (t - (start + peak) / 2))))  # Rising part of S-curve
+            else:
+                return (1 / (1 + np.exp(10 * (t - (peak + end) / 2))))  # Falling part of S-curve
+
+        # Define a radial falloff for perturbation based on distance
+        def radial_falloff(y, z):
+            """Return a smooth falloff value for perturbation based on distance from (-0.25, -0.25)."""
+            center = np.array([-0.25, -0.25])
+            point = np.array([y, z])
+            distance = np.linalg.norm(point - center)
+            radius = 0.30
+            if distance > radius:
+                return 0.0  # No perturbation outside the radius
+            else:
+                return (1 - (distance / radius))  # Linear falloff within the radius
+
+        # Define the flow field with radial perturbation
+        def flow_field(x, y, z, t):
+            """Flow field returning the velocity vector at a given (x, y, z, t)."""
+            # Base flow is always in +x direction at 1 m/s
+            base_flow = np.array([1, 0, 0])
+
+            # Perturbation vector we want to add smoothly (towards +y, +z)
+            perturbation = np.array([0, 2, 2])
+
+            # Apply linear interpolation for the perturbation over time (t)
+            perturbation_strength = linear_interpolation(t, 0, 2.3, 6.9)  # Start at 2s, full at 4.3s, fade out by 7.9s
+
+            # Apply radial falloff to scale perturbation based on distance from (-0.25, -0.25)
+            radial_factor = radial_falloff(y, z)
+
+            # Return the total flow (base flow + radial perturbation)
+            return base_flow + perturbation_strength * radial_factor * perturbation
+
+
+        # Define exponential decay function for opacity
+        def exponential_decay(t):
+            """Exponential decay rate function for opacity fade."""
+            return np.exp(-3 * t)  # More decay at the beginning, slower toward the end
+
+        # Function to generate a smooth transition between frequencies using cubic interpolation
+        def cubic_interpolation(t, t0, t1, f0, f1):
+            """Cubic interpolation between two points f0 at t0 and f1 at t1."""
+            alpha = (t - t0) / (t1 - t0)
+            alpha = min(max(alpha, 0), 1)  # Keep alpha between 0 and 1
+            return (1 - alpha) * f0 + alpha * f1
+
+        # Define a linear function to apply to the perturbation over time
+        def linear_interpolation(t, start, peak, end):
+            """Linear interpolation for smooth perturbation effect between start, peak, and end times."""
+            if t < start or t > end:
+                return 0.0
+            elif t < peak:
+                return (t - start) / (peak - start)  # Linear ramp up
+            else:
+                return (end - t) / (end - peak)  # Linear ramp down
+
+        # Time and frequency points
+        key_times = [0, 1.2, 3.40, 3.9, 4.6, 8]  # Times at which the frequency should be at the key values
+        key_frequencies = [6, 4, 24, 2, 6, 4]  # Corresponding frequencies at those times
+
+        # Buffer to keep track of active rings
+        active_rings = []
+
+        total_duration = 10  # Total animation duration
+        t = 0  # Start time
+
+        # Define a function that determines the frequency at any time t using cubic interpolation
+        def get_frequency(t):
+            # Loop over key times and interpolate between pairs of points
+            for i in range(len(key_times) - 1):
+                if key_times[i] <= t < key_times[i+1]:
+                    return cubic_interpolation(t, key_times[i], key_times[i+1], key_frequencies[i], key_frequencies[i+1])
+            # Default to the last frequency if time exceeds the last key time
+            return key_frequencies[-1]
+
+        # Begin camera rotation using an updater
+        def rotate_camera(mob, dt):
+            self.camera.frame.increment_theta(PI * dt / 10)  # Rotate at a fixed speed
+
+        self.camera.frame.add_updater(rotate_camera)
+
+        # Function to update ring positions based on the flow field and handle fading
+        def update_ring(r, dt):
+            points = r.get_points()
+            for i, point in enumerate(points):
+                x, y, z = point  # Get current position of each point
+                velocity = flow_field(x, y, z, t)  # Query the flow field for the velocity
+                points[i] = point + velocity * dt  # Move the point according to the flow field
+            r.set_points(points)
+
+            # Get the x position of the ring's center to calculate opacity
+            current_x = r.get_center()[0]
+            current_opacity = exponential_decay(current_x)
+            r.set_stroke(opacity=current_opacity)
+            r.set_fill(opacity=current_opacity * 0.15)  # Fill opacity is 15% of stroke opacity
+
+        while t < total_duration:
+            # Get the frequency at the current time
+            freq = get_frequency(t)
+
+            interval = 1 / freq  # Time between new rings based on the current frequency
+
+            # Create a new ring
+            ring = create_ring()
+
+            # Add the ring to the scene and start its animation
+            self.add(ring)
+            active_rings.append(ring)
+
+            # Use updaters to handle movement and fading independently for each ring
+            ring.add_updater(update_ring)
+
+            # Clean up rings that have completed their animation
+            for r in active_rings[:]:
+                if r.get_center()[0] >= 0.5:  # Remove when the ring reaches x=0.5
+                    self.remove(r)
+                    active_rings.remove(r)
+
+            # Increment time and control the time between new ring generation
+            self.wait(interval)
+            t += interval
+
+        self.wait(2)  # Wait briefly after the scene ends
+        
+        # Remove the camera updater after the animation ends
+        self.camera.frame.remove_updater(rotate_camera)
+
