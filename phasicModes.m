@@ -23,15 +23,15 @@ flow_speed = 2.0;   % Keep current flow speed (good as is)
 max_history_time = 1.5; % Keep 1.5 seconds of history
 
 %% Mode parameters - MUCH FASTER CYCLES (0.5-1 second cycles)
-continuous_speed = 2*pi/1.0;  % 0.5 sec per revolution!
+continuous_speed = 2*pi/0.5;  % 0.5 sec per revolution!
 
 % Discontinuous: 80ms active, 20ms gap (scaled for visualization)
-disc_active_time = 0.8;   % 80% of 0.5sec cycle (400ms active)
-disc_gap_time = 0.2;      % 20% gap (100ms gap)
+disc_active_time = 0.4;   % 80% of 0.5sec cycle (400ms active)
+disc_gap_time = 0.1;      % 20% gap (100ms gap)
 
 % Compressed: faster active phase
-comp_active_time = 0.4;  % 250ms active
-comp_cycle_time = 0.6;    % 500ms total cycle
+comp_active_time = 0.25;  % 250ms active
+comp_cycle_time = 0.5;    % 500ms total cycle
 
 % Interrupt: ONE ring per second exactly
 interrupt_cycle_time = 1.0;     % 1 second total cycle
